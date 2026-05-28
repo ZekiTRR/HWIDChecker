@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -9,8 +10,7 @@ namespace HWIDChecker
     using IF_INDEX = System.UInt32;
     using PCHAR = System.IntPtr;   // char* в C++ (указатель на ANSI строку)
     using PWCHAR = System.IntPtr;  // wchar_t* в C++ (указатель на Unicode строку)
-
-    #region Вспомогательные константы и структуры NDIS
+    
 
     public static class NetworkConstants
     {
@@ -39,9 +39,7 @@ namespace HWIDChecker
         public int iSockaddrLength;
     }
 
-    #endregion
 
-    #region Полная структура IP_ADAPTER_ADDRESSES для чекера
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct IP_ADAPTER_ADDRESSES_LH
@@ -116,9 +114,7 @@ namespace HWIDChecker
         public IntPtr FirstDnsSuffix;
     }
 
-    #endregion
 
-    #region Чекер серийного номера диска (Низкоуровневый IOCTL)
 
     class DiskSerialReader
     {
@@ -226,10 +222,7 @@ namespace HWIDChecker
             }
         }
     }
-
-    #endregion
-
-    #region Чекер Сетевых Интерфейсов (P/Invoke списка NDIS адаптеров)
+    
 
     class MacAddressReader
     {
@@ -320,10 +313,60 @@ namespace HWIDChecker
         }
     }
 
-    #endregion
 
-    #region Главный исполняемый класс приложения
+    public static class GpuCheckerSmi
+    {
+        public static string GetGpuUuid()
+        {
+            string smiPath = @"C:\Windows\System32\nvidia-smi.exe";
+        
+            if (!File.Exists(smiPath))
+                return "NVIDIA_SMI_NOT_INSTALLED";
 
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = smiPath,
+                    Arguments = "-L",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (Process process = Process.Start(psi))
+                {
+                    if (process == null) return "FAILED_TO_START_PROCESS";
+
+                    // Читаем весь текст, который вывела консоль
+                    string output = process.StandardOutput.ReadToEnd();
+                    process.WaitForExit();
+
+                    // Ищем маркер "UUID: "
+                    int uuidIndex = output.IndexOf("UUID: ");
+                    if (uuidIndex != -1)
+                    {
+                        int start = uuidIndex + 6; // Смещение сразу после "UUID: "
+                        int end = output.IndexOf(")", start);
+                    
+                        if (end != -1)
+                        {
+                            return output.Substring(start, end - start).Trim();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return $"ERROR: {ex.Message}";
+            }
+
+            return "UUID_NOT_FOUND_IN_OUTPUT";
+        }
+    }
+    
+    
+    
     class Program
     {
         static void Main(string[] args)
@@ -334,9 +377,9 @@ namespace HWIDChecker
             try
             {
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("==================================================");
-                Console.WriteLine("          HWID CHANGER DETECTOR v1.0              ");
-                Console.WriteLine("==================================================");
+                Console.WriteLine("======================================================");
+                Console.WriteLine("          HWID INFORMATION DETECTOR                   ");
+                Console.WriteLine("======================================================");
                 Console.ResetColor();
                 
                 // ЭТАП 1: Проверка физического диска (Серийный номер)
@@ -362,6 +405,14 @@ namespace HWIDChecker
                 Console.ResetColor();
                 
                 MacAddressReader.PrintMacAddresses();
+                
+                
+                // ЭТАП 3: Проверка серийного номера видеокарты
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n[+] Серийный номер видеокарты NVIDIA");
+                Console.ResetColor();
+
+                Console.WriteLine(GpuCheckerSmi.GetGpuUuid());
             }
             catch (Exception ex)
             {
@@ -377,5 +428,5 @@ namespace HWIDChecker
         }
     }
 
-    #endregion
+
 }
